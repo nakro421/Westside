@@ -96,6 +96,38 @@ async def reaktionen_auswerten(
         view=view
     )
 
+# ================= ABMELDUNG =================
+
+@bot.tree.command(name="abmelden", description="Ballas Dienstabmeldung")
+@app_commands.describe(
+    grund="Grund der Abmeldung",
+    dauer="Wie lange du abgemeldet bist"
+)
+async def abmelden(interaction: discord.Interaction, grund: str, dauer: str):
+
+    if BALLAS_ROLE_ID not in [r.id for r in interaction.user.roles]:
+        await interaction.response.send_message("Keine Ballas-Rechte.", ephemeral=True)
+        return
+
+    embed = discord.Embed(
+        title="Ballas Abmeldung",
+        color=0x8E44AD,
+        timestamp=datetime.now(UTC)
+    )
+
+    embed.add_field(name="Mitglied", value=interaction.user.mention, inline=False)
+    embed.add_field(name="Grund", value=grund, inline=False)
+    embed.add_field(name="Dauer", value=dauer, inline=False)
+
+    channel = bot.get_channel(ABMELDE_KANAL_ID)
+    await channel.send(embed=embed)
+
+    rolle = interaction.guild.get_role(DIENST_ROLLE_ID)
+    if rolle and rolle in interaction.user.roles:
+        await interaction.user.remove_roles(rolle)
+
+    await interaction.response.send_message("Abmeldung eingetragen.", ephemeral=True)
 
 if __name__ == "__main__":
     bot.run(TOKEN)
+
