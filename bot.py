@@ -14,6 +14,9 @@ BALLAS_ROLE_ID = 1461730290626990232
 LEADER_ROLE_ID = 1461730291004473512
 DIENST_ROLLE_ID = 333333333333333333
 ABMELDE_KANAL_ID = 1461730292569084070
+KONFLIKT_KANAL_ID = 1461730292569084074
+VIERH_KANAL_ID = 1461730292569084075
+STREETFIGHT_KANAL_ID = 1461730292569084076
 # =========================
 
 intents = discord.Intents.default()
@@ -127,7 +130,75 @@ async def abmelden(interaction: discord.Interaction, grund: str, dauer: str):
         await interaction.user.remove_roles(rolle)
 
     await interaction.response.send_message("Abmeldung eingetragen.", ephemeral=True)
+# ================= KONFLIKT TEMPLATE =================
+
+@bot.tree.command(name="konflikt", description="Konflikt Vorlage posten")
+async def konflikt(interaction: discord.Interaction):
+
+    if interaction.channel_id != KONFLIKT_KANAL_ID:
+        await interaction.response.send_message("Nur im Konflikt-Channel nutzbar.", ephemeral=True)
+        return
+
+    embed = discord.Embed(title="Konflikt", color=0x8E44AD)
+
+    embed.description = (
+        "**X VS X**\n\n"
+        "**Baseraid :** X = 0 VS 0 = X\n\n"
+        "**Streetfight :** X = 0 VS 0 = X\n\n"
+        "**Insgesamt :** X = 0 VS 0 = X\n\n"
+        "**Aktuelle Forderung :**"
+    )
+
+    await interaction.channel.send(embed=embed)
+    await interaction.response.send_message("Konflikt Vorlage gesendet.", ephemeral=True)
+
+
+# ================= 4H REGEL TEMPLATE =================
+
+@bot.tree.command(name="4hregel", description="4H Regel Vorlage posten")
+async def vierhregel(interaction: discord.Interaction):
+
+    if interaction.channel_id != VIERH_KANAL_ID:
+        await interaction.response.send_message("Nur im 4h-regel Channel nutzbar.", ephemeral=True)
+        return
+
+    embed = discord.Embed(title="4H Regel", color=0x8E44AD)
+
+    embed.description = (
+        "**X VS X**\n\n"
+        "**Wo:**\n\n"
+        "**Raus:**\n\n"
+        "**Forderung:**\n\n"
+        "**Stand:**"
+    )
+
+    await interaction.channel.send(embed=embed)
+    await interaction.response.send_message("4H Regel Vorlage gesendet.", ephemeral=True)
+
+
+# ================= STREETFIGHT TEMPLATE =================
+
+@bot.tree.command(name="streetfight", description="Streetfight Vorlage posten")
+async def streetfight(interaction: discord.Interaction):
+
+    if interaction.channel_id != STREETFIGHT_KANAL_ID:
+        await interaction.response.send_message("Nur im Streetfight-Channel nutzbar.", ephemeral=True)
+        return
+
+    embed = discord.Embed(title="Streetfight", color=0x8E44AD)
+
+    embed.description = (
+        "**X VS X**\n\n"
+        "**Wo:**\n\n"
+        "**Forderung:**\n\n"
+        "**Mit oder ohne Werfen:**\n\n"
+        "**Stand:**"
+    )
+
+    await interaction.channel.send(embed=embed)
+    await interaction.response.send_message("Streetfight Vorlage gesendet.", ephemeral=True)
 
 if __name__ == "__main__":
     bot.run(TOKEN)
+
 
