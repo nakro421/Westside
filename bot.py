@@ -244,9 +244,29 @@ async def streetfight(
 
     await interaction.channel.send(embed=embed)
     await interaction.response.send_message("Streetfight eingetragen.", ephemeral=True)
+# ================= CLEAR NACHRICHTEN =================
+
+@bot.tree.command(name="clear", description="Leader: Löscht bis zu 100 Nachrichten")
+@app_commands.describe(anzahl="Anzahl der Nachrichten (max 100)")
+async def clear(interaction: discord.Interaction, anzahl: int):
+
+    if LEADER_ROLE_ID not in [r.id for r in interaction.user.roles]:
+        await interaction.response.send_message("Keine Leader-Rechte.", ephemeral=True)
+        return
+
+    if anzahl < 1 or anzahl > 100:
+        await interaction.response.send_message("Du kannst nur zwischen 1 und 100 Nachrichten löschen.", ephemeral=True)
+        return
+
+    await interaction.response.defer(ephemeral=True)
+
+    deleted = await interaction.channel.purge(limit=anzahl)
+
+    await interaction.followup.send(f"{len(deleted)} Nachrichten gelöscht.", ephemeral=True)
 
 if __name__ == "__main__":
     bot.run(TOKEN)
+
 
 
 
