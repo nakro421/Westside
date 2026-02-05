@@ -38,16 +38,28 @@ async def on_ready():
 
 # ================= PING BUTTON =================
 
-class PingView(View):
-    def __init__(self, members_to_ping):
-        super().__init__(timeout=None)
-        self.members_to_ping = members_to_ping
+@discord.ui.button(label="Nicht reagierte Mitglieder pingen", style=discord.ButtonStyle.red)
+async def ping_button(self, interaction: discord.Interaction, button: Button):
 
-    @discord.ui.button(label="Nicht reagierte Mitglieder pingen", style=discord.ButtonStyle.red)
-    async def ping_button(self, interaction: discord.Interaction, button: Button):
-        mentions = " ".join(member.mention for member in self.members_to_ping)
-        await interaction.channel.send(f"Keine Reaktion von: {mentions}")
-        await interaction.response.send_message("Mitglieder wurden gepingt.", ephemeral=True)
+    if not self.members_to_ping:
+        await interaction.response.send_message(
+            "Alle Mitglieder haben reagiert ✅",
+            ephemeral=True
+        )
+        return
+
+    liste = "\n".join(f"• {member.mention}" for member in self.members_to_ping)
+
+    await interaction.channel.send(
+        "**Keine Reaktion von folgenden Mitgliedern:**\n"
+        f"{liste}"
+    )
+
+    await interaction.response.send_message(
+        "Mitglieder wurden gepingt.",
+        ephemeral=True
+    )
+
 
 
 # ================= REAKTIONEN AUSWERTEN =================
@@ -266,6 +278,7 @@ async def clear(interaction: discord.Interaction, anzahl: int):
 
 if __name__ == "__main__":
     bot.run(TOKEN)
+
 
 
 
