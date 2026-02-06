@@ -1,7 +1,6 @@
 import os
 import discord
 from discord.ext import commands
-from discord import app_commands
 from discord.ui import View, Button, Select
 from datetime import datetime, UTC
 from dotenv import load_dotenv
@@ -10,6 +9,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
+
+GUILD_ID = 1461730290626990227  # <- DEINE SERVER ID
 
 # ================= LANGWAFFEN PREISE =================
 
@@ -25,31 +26,22 @@ LANGWAFFEN_PREISE = {
     "AK": 1_000_000
 }
 
-# ================= IDS =================
-
-BALLAS_ROLE_ID = 1461730290626990232
-LEADER_ROLE_ID = 1461730291004473512
-DIENST_ROLLE_ID = 333333333333333333
-ABMELDE_KANAL_ID = 1461730292569084070
-KONFLIKT_KANAL_ID = 1461730292569084074
-VIERH_KANAL_ID = 1461730292569084075
-STREETFIGHT_KANAL_ID = 1461730292569084076
-
 # ================= BOT =================
 
 intents = discord.Intents.default()
 intents.members = True
-intents.message_content = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 @bot.event
 async def setup_hook():
-    await bot.tree.sync()
+    guild = discord.Object(id=GUILD_ID)
+    bot.tree.copy_global_to(guild=guild)
+    await bot.tree.sync(guild=guild)
 
 @bot.event
 async def on_ready():
-    print(f"Eingeloggt als {bot.user}")
+    print(f"✅ Eingeloggt als {bot.user}")
 
 # ================= LANGWAFFEN SYSTEM =================
 
@@ -57,7 +49,7 @@ class LangwaffenSelect(Select):
     def __init__(self):
         options = [
             discord.SelectOption(label=name, value=name)
-            for name in LANGWAFFEN_PREISE.keys()
+            for name in LANGWAFFEN_PREISE
         ]
 
         super().__init__(
@@ -157,7 +149,13 @@ async def show_summary(interaction, view):
 
     await interaction.response.edit_message(embed=embed, view=None)
 
-@bot.tree.command(name="langwaffen", description="Langwaffen auswählen & Preise berechnen")
+# ================= SLASH COMMAND =================
+
+@bot.tree.command(
+    name="langwaffen",
+    description="Langwaffen auswählen & Preise berechnen",
+    guild=discord.Object(id=GUILD_ID)
+)
 async def langwaffen(interaction: discord.Interaction):
     embed = discord.Embed(
         title="🔫 Langwaffen Auswahl",
@@ -170,10 +168,9 @@ async def langwaffen(interaction: discord.Interaction):
 
     await interaction.response.send_message(embed=embed, view=view)
 
-# ================= BOT START =================
+# ================= START =================
 
-if __name__ == "__main__":
-    bot.run(TOKEN)
+bot.run(TOKEN)
 
 
 
