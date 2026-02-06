@@ -1,176 +1,206 @@
 import os
 import discord
 from discord.ext import commands
-from discord.ui import View, Button, Select
+from discord import app_commands
+from discord.ui import View, Button
 from datetime import datetime, UTC
 from dotenv import load_dotenv
 
 # ================= SETUP =================
-
 load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
 
-GUILD_ID = 1461730290626990227  # <- DEINE SERVER ID
+# ================= IDS =================
+BALLAS_ROLE_ID = 1461730290626990232
+LEADER_ROLE_ID = 1461730291004473512
+DIENST_ROLLE_ID = 333333333333333333
 
-# ================= LANGWAFFEN PREISE =================
-
-LANGWAFFEN_PREISE = {
-    "SPEZI MK2": 15_000_000,
-    "SPEZI": 10_000_000,
-    "KARABINER MK2": 10_000_000,
-    "KARABINER": 5_000_000,
-    "BULLPUP GEWEHR": 2_100_000,
-    "BULLPUP GEWEHR MK1": 1_000_000,
-    "ADV": 1_500_000,
-    "AK MK2": 2_000_000,
-    "AK": 1_000_000
-}
+ABMELDE_KANAL_ID = 1461730292569084070
+KONFLIKT_KANAL_ID = 1461730292569084074
+VIERH_KANAL_ID = 1461730292569084075
+STREETFIGHT_KANAL_ID = 1461730292569084076
 
 # ================= BOT =================
-
 intents = discord.Intents.default()
 intents.members = True
+intents.message_content = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
+# ================= EVENTS =================
 @bot.event
 async def setup_hook():
-    guild = discord.Object(id=GUILD_ID)
-    bot.tree.copy_global_to(guild=guild)
-    await bot.tree.sync(guild=guild)
+    await bot.tree.sync()
 
 @bot.event
 async def on_ready():
     print(f"✅ Eingeloggt als {bot.user}")
 
-# ================= LANGWAFFEN SYSTEM =================
+# ================= PING VIEW =================
+class PingView(View):
+    def __init__(self, members_to_ping):
+        super().__init__(timeout=None)
+        self.members_to_ping = members_to_ping
 
-class LangwaffenSelect(Select):
-    def __init__(self):
-        options = [
-            discord.SelectOption(label=name, value=name)
-            for name in LANGWAFFEN_PREISE
-        ]
+    @discord.ui.button(
+        label="Nicht reagierte Mitglieder pingen",
+        style=discord.ButtonStyle.red
+    )
+    async def ping_button(self, interaction: discord.Interaction, button: Button):
+        if not self.members_to_ping:
+            await interaction.response.send_message(
+                "Alle Mitglieder haben reagiert ✅",
+                ephemeral=True
+            )
+            return
 
-        super().__init__(
-            placeholder="🔫 Langwaffen auswählen",
-            min_values=1,
-            max_values=len(options),
-            options=options
+        liste = "\n".join(f"• {m.mention}" for m in self.members_to_ping)
+
+        embed = discord.Embed(
+            title="❌ Keine Reaktion erhalten",
+            description=liste,
+            color=0xE74C3C
+        )
+        embed.set_footer(
+            text=f"Insgesamt: {len(self.members_to_ping)} Mitglieder"
         )
 
-    async def callback(self, interaction: discord.Interaction):
-        view = MengenView(self.values)
-        await interaction.response.edit_message(view=view, embed=None)
+        await interaction.channel.send(embed=embed)
+        await interaction.response.send_message(
+            "Mitglieder wurden gepingt.",
+            ephemeral=True
+        )
 
-class MengenView(View):
-    def __init__(self, waffen):
-        super().__init__(timeout=120)
-        self.waffen = list(waffen)
-        self.mengen = {w: 1 for w in self.waffen}
-        self.index = 0
+# ================= REAKTIONEN AUSWERTEN =================
+@bot.tree.command(
+    name="reaktionen_auswerten",
+    description="Leader: Zeigt wer reagiert hat und wer nicht"
+)
+@app_commands.describe(
+    channel="Channel der Nachricht",
+    nachrichten_id="ID der Nachricht"
+)
+async def reaktionen_auswerten(
+    interaction: discord.Interaction,
+    channel: discord.TextChannel,
+    nachrichten_id: str
+):
+    if LEADER_ROLE_ID not in [r.id for r in interaction.user.roles]:
+        await interaction.response.send_message(
+            "Keine Leader-Rechte.",
+            ephemeral=True
+        )
+        return
 
-        self.add_item(MinusButton())
-        self.add_item(PlusButton())
-        self.add_item(WeiterButton())
+    message = await channel.fetch_message(int(nachrichten_id))
 
-class MinusButton(Button):
-    def __init__(self):
-        super().__init__(label="➖", style=discord.ButtonStyle.red)
+    reacted_users = set()
+    for reaction in message.reactions:
+        async for user in reaction.users():
+            reacted_users.add(user)
 
-    async def callback(self, interaction: discord.Interaction):
-        view: MengenView = self.view
-        waffe = view.waffen[view.index]
-        if view.mengen[waffe] > 1:
-            view.mengen[waffe] -= 1
-        await update_embed(interaction, view)
+    ballas_role = interaction.guild.get_role(BALLAS_ROLE_ID)
 
-class PlusButton(Button):
-    def __init__(self):
-        super().__init__(label="➕", style=discord.ButtonStyle.green)
+    reagiert = []
+    nicht_reagiert = []
+    members_to_ping = []
 
-    async def callback(self, interaction: discord.Interaction):
-        view: MengenView = self.view
-        waffe = view.waffen[view.index]
-        view.mengen[waffe] += 1
-        await update_embed(interaction, view)
-
-class WeiterButton(Button):
-    def __init__(self):
-        super().__init__(label="Weiter ➡️", style=discord.ButtonStyle.blurple)
-
-    async def callback(self, interaction: discord.Interaction):
-        view: MengenView = self.view
-        view.index += 1
-
-        if view.index >= len(view.waffen):
-            await show_summary(interaction, view)
+    for member in ballas_role.members:
+        if member.bot:
+            continue
+        if member in reacted_users:
+            reagiert.append(member.display_name)
         else:
-            await update_embed(interaction, view)
+            nicht_reagiert.append(member.display_name)
+            members_to_ping.append(member)
 
-async def update_embed(interaction, view):
-    waffe = view.waffen[view.index]
-    menge = view.mengen[waffe]
-    preis = LANGWAFFEN_PREISE[waffe]
+    view = PingView(members_to_ping) if members_to_ping else None
 
-    embed = discord.Embed(
-        title="🔢 Menge festlegen",
-        description=(
-            f"🔫 **{waffe}**\n\n"
-            f"Menge: **{menge}**\n"
-            f"Einzelpreis: {preis/1_000_000:.1f} Mio"
-        ),
-        color=0xF1C40F
+    await interaction.response.send_message(
+        f"**Reagiert:**\n" + "\n".join(reagiert) +
+        f"\n\n**Nicht reagiert:**\n" + "\n".join(nicht_reagiert),
+        ephemeral=True,
+        view=view
     )
 
-    await interaction.response.edit_message(embed=embed, view=view)
-
-async def show_summary(interaction, view):
-    gesamt = 0
-    text = ""
-
-    for waffe, menge in view.mengen.items():
-        preis = LANGWAFFEN_PREISE[waffe] * menge
-        gesamt += preis
-        text += f"🔫 {waffe} × {menge} → {preis/1_000_000:.1f} Mio\n"
+# ================= ABMELDUNG =================
+@bot.tree.command(name="abmelden", description="Ballas Dienstabmeldung")
+@app_commands.describe(
+    grund="Grund der Abmeldung",
+    dauer="Wie lange du abgemeldet bist"
+)
+async def abmelden(
+    interaction: discord.Interaction,
+    grund: str,
+    dauer: str
+):
+    if BALLAS_ROLE_ID not in [r.id for r in interaction.user.roles]:
+        await interaction.response.send_message(
+            "Keine Ballas-Rechte.",
+            ephemeral=True
+        )
+        return
 
     embed = discord.Embed(
-        title="🧾 Bestellung",
-        description=text,
-        color=0x2ECC71,
+        title="Ballas Abmeldung",
+        color=0x8E44AD,
         timestamp=datetime.now(UTC)
     )
-
     embed.add_field(
-        name="💰 Gesamtpreis",
-        value=f"**{gesamt/1_000_000:.1f} Mio**",
+        name="Mitglied",
+        value=interaction.user.mention,
         inline=False
     )
+    embed.add_field(name="Grund", value=grund, inline=False)
+    embed.add_field(name="Dauer", value=dauer, inline=False)
 
-    await interaction.response.edit_message(embed=embed, view=None)
+    channel = bot.get_channel(ABMELDE_KANAL_ID)
+    await channel.send(embed=embed)
 
-# ================= SLASH COMMAND =================
+    rolle = interaction.guild.get_role(DIENST_ROLLE_ID)
+    if rolle and rolle in interaction.user.roles:
+        await interaction.user.remove_roles(rolle)
 
-@bot.tree.command(
-    name="langwaffen",
-    description="Langwaffen auswählen & Preise berechnen",
-    guild=discord.Object(id=GUILD_ID)
-)
-async def langwaffen(interaction: discord.Interaction):
-    embed = discord.Embed(
-        title="🔫 Langwaffen Auswahl",
-        description="Wähle eine oder mehrere Waffen aus",
-        color=0x3498DB
+    await interaction.response.send_message(
+        "Abmeldung eingetragen.",
+        ephemeral=True
     )
 
-    view = View()
-    view.add_item(LangwaffenSelect())
+# ================= CLEAR =================
+@bot.tree.command(
+    name="clear",
+    description="Leader: Löscht bis zu 100 Nachrichten"
+)
+@app_commands.describe(
+    anzahl="Anzahl der Nachrichten (max 100)"
+)
+async def clear(interaction: discord.Interaction, anzahl: int):
+    if LEADER_ROLE_ID not in [r.id for r in interaction.user.roles]:
+        await interaction.response.send_message(
+            "Keine Leader-Rechte.",
+            ephemeral=True
+        )
+        return
 
-    await interaction.response.send_message(embed=embed, view=view)
+    if anzahl < 1 or anzahl > 100:
+        await interaction.response.send_message(
+            "Du kannst nur zwischen 1 und 100 Nachrichten löschen.",
+            ephemeral=True
+        )
+        return
+
+    await interaction.response.defer(ephemeral=True)
+    deleted = await interaction.channel.purge(limit=anzahl)
+    await interaction.followup.send(
+        f"{len(deleted)} Nachrichten gelöscht.",
+        ephemeral=True
+    )
 
 # ================= START =================
+if __name__ == "__main__":
+    bot.run(TOKEN)
 
-bot.run(TOKEN)
+
 
 
 
