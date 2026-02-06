@@ -135,7 +135,7 @@ async def konflikt(interaction: discord.Interaction, gang1: str, gang2: str,
     await interaction.response.send_message("Konflikt eingetragen.", ephemeral=True)
 
 # ================= 4H REGEL =================
-@bot.tree.command(name="4hregel")
+@bot.tree.command(name="vierhregel")
 async def vierhregel(interaction: discord.Interaction, gang1: str, gang2: str,
                      wo: str, raus: str, forderung: str, stand: str):
     if interaction.channel_id != VIERH_KANAL_ID:
@@ -261,6 +261,7 @@ async def kurzwaffen(interaction: discord.Interaction):
 
 # ================= START =================
 bot.run(TOKEN)
+
 
 
 
