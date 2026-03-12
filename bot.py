@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
 
-BALLAS_ROLE_ID = 1477106303141806326
+LCN_ROLE_ID = 1477106303141806326
 LEADER_ROLE_ID = 1477106303179559060
 DIENST_ROLLE_ID = 333333333333333333
 
@@ -261,6 +261,7 @@ async def kurzwaffen(interaction: discord.Interaction):
 
 # ================= START =================
 bot.run(TOKEN)
+
 
 
 
