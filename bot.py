@@ -113,7 +113,7 @@ async def reaktionen(interaction: discord.Interaction, channel: discord.TextChan
 # ================= ABMELDUNG =================
 @bot.tree.command(name="abmelden")
 async def abmelden(interaction: discord.Interaction, grund: str, dauer: str):
-    embed = discord.Embed(title="Ballas Abmeldung", color=0x8E44AD, timestamp=datetime.now(UTC))
+    embed = discord.Embed(title="Lazkopat Abmeldung", color=0x8E44AD, timestamp=datetime.now(UTC))
     embed.add_field(name="Mitglied", value=interaction.user.mention)
     embed.add_field(name="Grund", value=grund)
     embed.add_field(name="Dauer", value=dauer)
