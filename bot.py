@@ -18,7 +18,7 @@ ABMELDE_KANAL_ID = 1481793789902192796
 
 # =========================================
 
-intents = discord.Intents.default()
+intents = discord.Intents.all()
 intents.members = True
 intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
@@ -83,7 +83,95 @@ async def clear(interaction: discord.Interaction, anzahl: int):
         return await interaction.response.send_message("Keine Leader-Rechte.", ephemeral=True)
     deleted = await interaction.channel.purge(limit=anzahl)
     await interaction.response.send_message(f"{len(deleted)} Nachrichten gelöscht.", ephemeral=True)
+# ================= LOGGING =================
 
+LOG_CHANNEL_ID = 1488558224553672875
+
+def log_channel(guild):
+    return guild.get_channel(LOG_CHANNEL_ID)
+
+@bot.event
+async def on_message_delete(message):
+    if message.author.bot:
+        return
+
+    embed = discord.Embed(title="🗑️ Nachricht gelöscht", color=0xE74C3C)
+    embed.add_field(name="User", value=message.author.mention)
+    embed.add_field(name="Text", value=message.content or "-")
+
+    await log_channel(message.guild).send(embed=embed)
+
+
+@bot.event
+async def on_message_edit(before, after):
+    if before.author.bot or before.content == after.content:
+        return
+
+    embed = discord.Embed(title="✏️ Nachricht bearbeitet", color=0xF1C40F)
+    embed.add_field(name="Alt", value=before.content or "-")
+    embed.add_field(name="Neu", value=after.content or "-")
+
+    await log_channel(before.guild).send(embed=embed)
+
+
+@bot.event
+async def on_member_update(before, after):
+    before_roles = set(before.roles)
+    after_roles = set(after.roles)
+
+    added = after_roles - before_roles
+    removed = before_roles - after_roles
+
+    for role in added:
+        embed = discord.Embed(title="➕ Rolle hinzugefügt", color=0x2ECC71)
+        embed.add_field(name="User", value=after.mention)
+        embed.add_field(name="Rolle", value=role.mention)
+        await log_channel(after.guild).send(embed=embed)
+
+    for role in removed:
+        embed = discord.Embed(title="➖ Rolle entfernt", color=0xE67E22)
+        embed.add_field(name="User", value=after.mention)
+        embed.add_field(name="Rolle", value=role.mention)
+        await log_channel(after.guild).send(embed=embed)
+
+
+# ================= ANTI RAID =================
+
+raid_tracker = {}
+RAID_LIMIT = 5
+RAID_TIME = 10
+
+@bot.event
+async def on_member_join(member):
+    now = datetime.now(UTC)
+
+    if member.guild.id not in raid_tracker:
+        raid_tracker[member.guild.id] = []
+
+    raid_tracker[member.guild.id].append(now)
+
+    raid_tracker[member.guild.id] = [
+        t for t in raid_tracker[member.guild.id]
+        if (now - t).total_seconds() < RAID_TIME
+    ]
+
+    if len(raid_tracker[member.guild.id]) >= RAID_LIMIT:
+        await member.guild.ban(member, reason="Raid erkannt")
+
+        embed = discord.Embed(title="🚨 RAID erkannt", color=0xC0392B)
+        embed.description = f"{member.mention} wurde gebannt!"
+        await log_channel(member.guild).send(embed=embed)
+    else:
+        embed = discord.Embed(title="📥 Beigetreten", color=0x2ECC71)
+        embed.add_field(name="User", value=member.mention)
+        await log_channel(member.guild).send(embed=embed)
+
+
+@bot.event
+async def on_member_remove(member):
+    embed = discord.Embed(title="📤 User verlassen", color=0xE74C3C)
+    embed.add_field(name="User", value=member.mention)
+    await log_channel(member.guild).send(embed=embed)
 # ================= START =================
 bot.run(TOKEN)
 
