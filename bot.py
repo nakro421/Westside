@@ -14,7 +14,15 @@ BALLAS_ROLE_ID = 1481793788245704831
 LEADER_ROLE_ID = 1481793788358819947
 
 ABMELDE_KANAL_ID = 1478111622441598996
-ABMELDE_KANAL_ID = 1481793789902192796
+
+# ================= COUNTER =================
+GUILD_ID = 1481793788245704826  
+ROLE_COUNTER_ID = 1489217135530999938  
+
+MEMBER_CHANNEL_ID = 1489217183572820108
+BOT_CHANNEL_ID = 1489217212332904578
+ROLE_CHANNEL_ID = 1489217322978639892
+
 
 # =========================================
 
@@ -172,6 +180,46 @@ async def on_member_remove(member):
     embed = discord.Embed(title="📤 User verlassen", color=0xE74C3C)
     embed.add_field(name="User", value=member.mention)
     await log_channel(member.guild).send(embed=embed)
+
+from discord.ext import tasks
+
+@tasks.loop(seconds=30)
+async def update_stats():
+    guild = bot.get_guild(GUILD_ID)
+
+    if guild is None:
+        print("❌ Guild nicht gefunden")
+        return
+
+    await guild.chunk()
+
+    members = guild.members
+
+    total_members = len([m for m in members if not m.bot])
+    bot_count = len([m for m in members if m.bot])
+    role_count = len([m for m in members if any(r.id == ROLE_COUNTER_ID for r in m.roles)])
+
+    try:
+        member_channel = guild.get_channel(MEMBER_CHANNEL_ID)
+        bot_channel = guild.get_channel(BOT_CHANNEL_ID)
+        role_channel = guild.get_channel(ROLE_CHANNEL_ID)
+
+        if member_channel:
+            await member_channel.edit(name=f"👥 Mitglieder: {total_members}")
+
+        if bot_channel:
+            await bot_channel.edit(name=f"🤖 Bots: {bot_count}")
+
+        if role_channel:
+            await role_channel.edit(name=f"🎭 Ballas: {role_count}")
+
+    except Exception as e:
+        print("❌ Counter Fehler:", e)
+
+
+@update_stats.before_loop
+async def before_stats():
+    await bot.wait_until_ready()
 # ================= START =================
 bot.run(TOKEN)
 
