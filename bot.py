@@ -23,7 +23,6 @@ MEMBER_CHANNEL_ID = 1489217183572820108
 BOT_CHANNEL_ID = 1489217212332904578
 ROLE_CHANNEL_ID = 1489217322978639892
 
-
 # =========================================
 
 intents = discord.Intents.all()
@@ -34,11 +33,53 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 # ================= EVENTS =================
 @bot.event
 async def on_ready():
+    await bot.tree.sync()  # ✅ FIX: Commands immer aktuell
     print(f"✅ Eingeloggt als {bot.user}")
 
-    # 👉 Counter starten
     if not update_stats.is_running():
         update_stats.start()
+
+# ================= ERROR HANDLING =================
+@bot.tree.error
+async def on_app_command_error(interaction: discord.Interaction, error):
+
+    # Cooldown
+    if isinstance(error, app_commands.errors.CommandOnCooldown):
+        return await interaction.response.send_message(
+            f"⏳ Bitte warte {round(error.retry_after, 1)} Sekunden.",
+            ephemeral=True
+        )
+
+    # Fehlende Rechte
+    elif isinstance(error, app_commands.errors.MissingPermissions):
+        return await interaction.response.send_message(
+            "❌ Du hast keine Rechte dafür.",
+            ephemeral=True
+        )
+
+    # Fehler im Terminal
+    print(f"❌ Fehler bei {interaction.command.name}: {error}")
+
+    # Fehler auch im Log-Channel anzeigen
+    try:
+        log = log_channel(interaction.guild)
+
+        embed = discord.Embed(title="⚠️ Command Fehler", color=0xE74C3C)
+        embed.add_field(name="Command", value=interaction.command.name)
+        embed.add_field(name="User", value=interaction.user.mention)
+        embed.add_field(name="Fehler", value=str(error))
+
+        await log.send(embed=embed)
+    except:
+        pass
+
+    try:
+        await interaction.response.send_message(
+            "❌ Es ist ein Fehler aufgetreten (wurde geloggt).",
+            ephemeral=True
+        )
+    except:
+        pass
 
 # ================= PING VIEW =================
 class PingView(View):
@@ -91,8 +132,8 @@ async def clear(interaction: discord.Interaction, anzahl: int):
         return await interaction.response.send_message("Keine Leader-Rechte.", ephemeral=True)
     deleted = await interaction.channel.purge(limit=anzahl)
     await interaction.response.send_message(f"{len(deleted)} Nachrichten gelöscht.", ephemeral=True)
-# ================= LOGGING =================
 
+# ================= LOGGING =================
 LOG_CHANNEL_ID = 1488558224553672875
 
 def log_channel(guild):
@@ -109,7 +150,6 @@ async def on_message_delete(message):
 
     await log_channel(message.guild).send(embed=embed)
 
-
 @bot.event
 async def on_message_edit(before, after):
     if before.author.bot or before.content == after.content:
@@ -120,7 +160,6 @@ async def on_message_edit(before, after):
     embed.add_field(name="Neu", value=after.content or "-")
 
     await log_channel(before.guild).send(embed=embed)
-
 
 @bot.event
 async def on_member_update(before, after):
@@ -142,9 +181,7 @@ async def on_member_update(before, after):
         embed.add_field(name="Rolle", value=role.mention)
         await log_channel(after.guild).send(embed=embed)
 
-
 # ================= ANTI RAID =================
-
 raid_tracker = {}
 RAID_LIMIT = 5
 RAID_TIME = 10
@@ -173,7 +210,6 @@ async def on_member_join(member):
         embed = discord.Embed(title="📥 Beigetreten", color=0x2ECC71)
         embed.add_field(name="User", value=member.mention)
         await log_channel(member.guild).send(embed=embed)
-
 
 @bot.event
 async def on_member_remove(member):
@@ -216,25 +252,9 @@ async def update_stats():
     except Exception as e:
         print("❌ Counter Fehler:", e)
 
-
 @update_stats.before_loop
 async def before_stats():
     await bot.wait_until_ready()
+
 # ================= START =================
 bot.run(TOKEN)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
