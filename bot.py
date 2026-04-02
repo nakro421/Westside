@@ -33,12 +33,12 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 # ================= EVENTS =================
 @bot.event
-async def setup_hook():
-    await bot.tree.sync()
-
-@bot.event
 async def on_ready():
     print(f"✅ Eingeloggt als {bot.user}")
+
+    # 👉 Counter starten
+    if not update_stats.is_running():
+        update_stats.start()
 
 # ================= PING VIEW =================
 class PingView(View):
