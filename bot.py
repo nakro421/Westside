@@ -13,8 +13,7 @@ TOKEN = os.getenv("DISCORD_TOKEN")
 BALLAS_ROLE_ID = 1481793788245704831
 LEADER_ROLE_ID = 1481793788358819947
 
-ABMELDE_KANAL_ID = 1478111622441598996
-
+ABMELDE_KANAL_ID = 1481793789902192796
 # ================= COUNTER =================
 GUILD_ID = 1481793788245704826  
 ROLE_COUNTER_ID = 1481793788245704831  
@@ -118,11 +117,22 @@ async def reaktionen(interaction: discord.Interaction, channel: discord.TextChan
 # ================= ABMELDUNG =================
 @bot.tree.command(name="abmelden")
 async def abmelden(interaction: discord.Interaction, grund: str, dauer: str):
-    embed = discord.Embed(title="General Lazkopat Abmeldung", color=0x8E44AD, timestamp=datetime.now(UTC))
+    embed = discord.Embed(
+        title="General Lazkopat Abmeldung",
+        color=0x8E44AD,
+        timestamp=datetime.now(UTC)
+    )
     embed.add_field(name="Mitglied", value=interaction.user.mention)
     embed.add_field(name="Grund", value=grund)
     embed.add_field(name="Dauer", value=dauer)
-    await bot.get_channel(ABMELDE_KANAL_ID).send(embed=embed)
+
+    channel = bot.get_channel(ABMELDE_KANAL_ID)
+
+    if channel is None:
+        channel = await bot.fetch_channel(ABMELDE_KANAL_ID)
+
+    await channel.send(embed=embed)
+
     await interaction.response.send_message("Abmeldung eingetragen.", ephemeral=True)
 
 # ================= CLEAR =================
@@ -227,13 +237,14 @@ async def update_stats():
         print("❌ Guild nicht gefunden")
         return
 
-    await guild.chunk()
-
-    members = guild.members
+    members = [m async for m in guild.fetch_members(limit=None)]
 
     total_members = len([m for m in members if not m.bot])
     bot_count = len([m for m in members if m.bot])
-    role_count = len([m for m in members if any(r.id == ROLE_COUNTER_ID for r in m.roles)])
+    role_count = len([
+        m for m in members
+        if any(r.id == ROLE_COUNTER_ID for r in m.roles)
+    ])
 
     try:
         member_channel = guild.get_channel(MEMBER_CHANNEL_ID)
@@ -251,10 +262,5 @@ async def update_stats():
 
     except Exception as e:
         print("❌ Counter Fehler:", e)
-
-@update_stats.before_loop
-async def before_stats():
-    await bot.wait_until_ready()
-
 # ================= START =================
 bot.run(TOKEN)
