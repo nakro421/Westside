@@ -17,7 +17,7 @@ ABMELDE_KANAL_ID = 1478111622441598996
 
 # ================= COUNTER =================
 GUILD_ID = 1481793788245704826  
-ROLE_COUNTER_ID = 1489217135530999938  
+ROLE_COUNTER_ID = 1481793788245704831  
 
 MEMBER_CHANNEL_ID = 1489217183572820108
 BOT_CHANNEL_ID = 1489217212332904578
@@ -211,7 +211,7 @@ async def update_stats():
             await bot_channel.edit(name=f"🤖 Bots: {bot_count}")
 
         if role_channel:
-            await role_channel.edit(name=f"🎭 Ballas: {role_count}")
+            await role_channel.edit(name=f"🎭 STRYX BLOCK 069: {role_count}")
 
     except Exception as e:
         print("❌ Counter Fehler:", e)
