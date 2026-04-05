@@ -229,7 +229,7 @@ async def on_member_remove(member):
 
 from discord.ext import tasks
 
-@tasks.loop(seconds=30)
+@tasks.loop(minutes=1)
 async def update_stats():
     guild = bot.get_guild(GUILD_ID)
 
@@ -237,14 +237,16 @@ async def update_stats():
         print("❌ Guild nicht gefunden")
         return
 
-    members = [m async for m in guild.fetch_members(limit=None)]
+    # 🔥 WICHTIG: Cache laden
+    await guild.chunk()
+
+    members = guild.members
 
     total_members = len([m for m in members if not m.bot])
     bot_count = len([m for m in members if m.bot])
-    role_count = len([
-        m for m in members
-        if any(r.id == ROLE_COUNTER_ID for r in m.roles)
-    ])
+
+    role = guild.get_role(ROLE_COUNTER_ID)
+    role_count = len(role.members) if role else 0
 
     try:
         member_channel = guild.get_channel(MEMBER_CHANNEL_ID)
