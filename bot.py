@@ -339,7 +339,7 @@ async def update_stats():
             print(f"❌ Bot-Channel mit ID {BOT_CHANNEL_ID} nicht gefunden")
 
         if role_channel:
-            await role_channel.edit(name=f"🎭 STRYX BLOCK 069}: {role_count}")
+            await role_channel.edit(name=f"🎭 STRYX BLOCK 069: {role_count}")
         else:
             print(f"❌ Rollen-Channel mit ID {ROLE_CHANNEL_ID} nicht gefunden")
 
