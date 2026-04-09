@@ -15,14 +15,13 @@ GUILD_ID = 1491834774921150464
 
 BALLAS_ROLE_ID = 1491834774921150469
 LEADER_ROLE_ID = 1491834774950641842
-ROLE_COUNTER_ID = 1491850662873661541
 
 ABMELDE_KANAL_ID = 1491834776557064315
 LOG_CHANNEL_ID = 1491846127325155618
 
 MEMBER_CHANNEL_ID = 1491850704669769728
 BOT_CHANNEL_ID = 1491850735195918377
-ROLE_CHANNEL_ID = 1491834774921150469
+ROLE_CHANNEL_ID = 1491850780012187849
 # =========================================
 
 intents = discord.Intents.all()
@@ -305,22 +304,27 @@ async def update_stats():
         print(f"❌ Guild mit ID {GUILD_ID} nicht gefunden")
         return
 
-    await guild.chunk()
+    try:
+        await guild.chunk()
+    except Exception as e:
+        print(f"❌ Fehler beim Laden der Mitglieder: {e}")
 
     members = guild.members
+
     total_members = len([m for m in members if not m.bot])
     bot_count = len([m for m in members if m.bot])
 
-    role = guild.get_role(ROLE_COUNTER_ID)
+    role = guild.get_role(BALLAS_ROLE_ID)
 
     if role is None:
-        print(f"❌ Rolle mit ID {ROLE_COUNTER_ID} nicht gefunden")
+        print(f"❌ Rolle mit ID {BALLAS_ROLE_ID} nicht gefunden")
         role_count = 0
-        role_name = "Rolle"
     else:
-        role_count = len(role.members)
-        role_name = role.name
-        print(f"✅ Rolle gefunden: {role.name} | Mitglieder: {role_count}")
+        role_count = len([
+            m for m in members
+            if not m.bot and any(r.id == BALLAS_ROLE_ID for r in m.roles)
+        ])
+        print(f"✅ STRYX BLOCK 069 Mitglieder: {role_count}")
 
     try:
         member_channel = guild.get_channel(MEMBER_CHANNEL_ID)
