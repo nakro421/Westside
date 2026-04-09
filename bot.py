@@ -1,4 +1,5 @@
 import os
+import asyncio
 import discord
 from discord.ext import commands, tasks
 from discord import app_commands
@@ -30,9 +31,24 @@ intents.message_content = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# ================= HILFSFUNKTION =================
+# ================= HILFSFUNKTIONEN =================
 def log_channel(guild: discord.Guild):
     return guild.get_channel(LOG_CHANNEL_ID)
+
+async def get_audit_entry(guild: discord.Guild, action: discord.AuditLogAction, target_id: int = None):
+    try:
+        async for entry in guild.audit_logs(limit=10, action=action):
+            if target_id is None:
+                return entry
+
+            target = entry.target
+            if target and hasattr(target, "id") and target.id == target_id:
+                delta = datetime.now(UTC) - entry.created_at
+                if delta.total_seconds() <= 10:
+                    return entry
+    except Exception as e:
+        print(f"❌ Audit-Log Fehler: {e}")
+    return None
 
 # ================= EVENTS =================
 @bot.event
@@ -193,16 +209,35 @@ async def clear(interaction: discord.Interaction, anzahl: int):
 # ================= LOGGING =================
 @bot.event
 async def on_message_delete(message):
-    if message.author.bot or message.guild is None:
+    if message.guild is None:
         return
 
     log = log_channel(message.guild)
     if log is None:
         return
 
+    deleter = "Unbekannt"
+    try:
+        await asyncio.sleep(1)
+        entry = await get_audit_entry(
+            message.guild,
+            discord.AuditLogAction.message_delete,
+            message.author.id if message.author else None
+        )
+        if entry:
+            deleter = entry.user.mention
+    except:
+        pass
+
     embed = discord.Embed(title="🗑️ Nachricht gelöscht", color=0xE74C3C)
-    embed.add_field(name="User", value=message.author.mention, inline=False)
-    embed.add_field(name="Text", value=message.content or "-", inline=False)
+    embed.add_field(name="Autor", value=message.author.mention if message.author else "Unbekannt", inline=False)
+    embed.add_field(name="Gelöscht von", value=deleter, inline=False)
+    embed.add_field(name="Kanal", value=message.channel.mention, inline=False)
+    embed.add_field(name="Text", value=message.content if message.content else "-", inline=False)
+
+    if message.attachments:
+        dateien = "\n".join(a.url for a in message.attachments)
+        embed.add_field(name="Anhänge", value=dateien[:1024], inline=False)
 
     await log.send(embed=embed)
 
@@ -219,6 +254,7 @@ async def on_message_edit(before, after):
     embed.add_field(name="User", value=before.author.mention, inline=False)
     embed.add_field(name="Alt", value=before.content or "-", inline=False)
     embed.add_field(name="Neu", value=after.content or "-", inline=False)
+    embed.add_field(name="Kanal", value=before.channel.mention, inline=False)
 
     await log.send(embed=embed)
 
@@ -249,15 +285,35 @@ async def on_member_update(before, after):
         embed.add_field(name="Rolle", value=role.mention, inline=False)
         await log.send(embed=embed)
 
-# ================= ANTI RAID =================
-raid_tracker = {}
-RAID_LIMIT = 5
-RAID_TIME = 10
+    if before.nick != after.nick:
+        embed = discord.Embed(title="✏️ Nickname geändert", color=0x3498DB)
+        embed.add_field(name="User", value=after.mention, inline=False)
+        embed.add_field(name="Alt", value=before.nick or before.name, inline=False)
+        embed.add_field(name="Neu", value=after.nick or after.name, inline=False)
+        await log.send(embed=embed)
+
+    if before.timed_out_until != after.timed_out_until:
+        await asyncio.sleep(1)
+        entry = await get_audit_entry(after.guild, discord.AuditLogAction.member_update, after.id)
+        moderator = entry.user.mention if entry else "Unbekannt"
+
+        if after.timed_out_until and (after.timed_out_until > datetime.now(UTC)):
+            embed = discord.Embed(title="🔇 Timeout gesetzt", color=0x9B59B6)
+            embed.add_field(name="User", value=after.mention, inline=False)
+            embed.add_field(name="Von", value=moderator, inline=False)
+            embed.add_field(name="Bis", value=discord.utils.format_dt(after.timed_out_until, style="F"), inline=False)
+        else:
+            embed = discord.Embed(title="🔊 Timeout entfernt", color=0x2ECC71)
+            embed.add_field(name="User", value=after.mention, inline=False)
+            embed.add_field(name="Von", value=moderator, inline=False)
+
+        await log.send(embed=embed)
 
 @bot.event
 async def on_member_join(member):
     now = datetime.now(UTC)
 
+    global raid_tracker
     if member.guild.id not in raid_tracker:
         raid_tracker[member.guild.id] = []
 
@@ -280,6 +336,7 @@ async def on_member_join(member):
         if log:
             embed = discord.Embed(title="📥 Beigetreten", color=0x2ECC71)
             embed.add_field(name="User", value=member.mention, inline=False)
+            embed.add_field(name="Account erstellt", value=discord.utils.format_dt(member.created_at, style="F"), inline=False)
             await log.send(embed=embed)
 
 @bot.event
@@ -291,9 +348,118 @@ async def on_member_remove(member):
     if log is None:
         return
 
-    embed = discord.Embed(title="📤 User verlassen", color=0xE74C3C)
-    embed.add_field(name="User", value=member.mention, inline=False)
+    await asyncio.sleep(1)
+
+    kick_entry = await get_audit_entry(member.guild, discord.AuditLogAction.kick, member.id)
+
+    if kick_entry:
+        embed = discord.Embed(title="👢 Mitglied gekickt", color=0xE67E22)
+        embed.add_field(name="User", value=f"{member} ({member.id})", inline=False)
+        embed.add_field(name="Gekickt von", value=kick_entry.user.mention, inline=False)
+        embed.add_field(name="Grund", value=kick_entry.reason or "Kein Grund angegeben", inline=False)
+    else:
+        embed = discord.Embed(title="📤 User verlassen", color=0xE74C3C)
+        embed.add_field(name="User", value=f"{member} ({member.id})", inline=False)
+
     await log.send(embed=embed)
+
+@bot.event
+async def on_member_ban(guild, user):
+    log = log_channel(guild)
+    if log is None:
+        return
+
+    await asyncio.sleep(1)
+    entry = await get_audit_entry(guild, discord.AuditLogAction.ban, user.id)
+
+    embed = discord.Embed(title="🔨 User gebannt", color=0xC0392B)
+    embed.add_field(name="User", value=f"{user} ({user.id})", inline=False)
+
+    if entry:
+        embed.add_field(name="Gebannt von", value=entry.user.mention, inline=False)
+        embed.add_field(name="Grund", value=entry.reason or "Kein Grund angegeben", inline=False)
+
+    await log.send(embed=embed)
+
+@bot.event
+async def on_member_unban(guild, user):
+    log = log_channel(guild)
+    if log is None:
+        return
+
+    await asyncio.sleep(1)
+    entry = await get_audit_entry(guild, discord.AuditLogAction.unban, user.id)
+
+    embed = discord.Embed(title="✅ User entbannt", color=0x2ECC71)
+    embed.add_field(name="User", value=f"{user} ({user.id})", inline=False)
+
+    if entry:
+        embed.add_field(name="Entbannt von", value=entry.user.mention, inline=False)
+        embed.add_field(name="Grund", value=entry.reason or "Kein Grund angegeben", inline=False)
+
+    await log.send(embed=embed)
+
+@bot.event
+async def on_guild_channel_create(channel):
+    log = log_channel(channel.guild)
+    if log is None:
+        return
+
+    embed = discord.Embed(title="📁 Kanal erstellt", color=0x2ECC71)
+    embed.add_field(name="Name", value=channel.name, inline=False)
+    embed.add_field(name="ID", value=str(channel.id), inline=False)
+    await log.send(embed=embed)
+
+@bot.event
+async def on_guild_channel_delete(channel):
+    log = log_channel(channel.guild)
+    if log is None:
+        return
+
+    embed = discord.Embed(title="🗑️ Kanal gelöscht", color=0xE74C3C)
+    embed.add_field(name="Name", value=channel.name, inline=False)
+    embed.add_field(name="ID", value=str(channel.id), inline=False)
+    await log.send(embed=embed)
+
+@bot.event
+async def on_guild_channel_update(before, after):
+    log = log_channel(after.guild)
+    if log is None:
+        return
+
+    if before.name != after.name:
+        embed = discord.Embed(title="✏️ Kanal umbenannt", color=0xF1C40F)
+        embed.add_field(name="Alt", value=before.name, inline=False)
+        embed.add_field(name="Neu", value=after.name, inline=False)
+        embed.add_field(name="ID", value=str(after.id), inline=False)
+        await log.send(embed=embed)
+
+@bot.event
+async def on_guild_role_create(role):
+    log = log_channel(role.guild)
+    if log is None:
+        return
+
+    embed = discord.Embed(title="🆕 Rolle erstellt", color=0x2ECC71)
+    embed.add_field(name="Rolle", value=role.name, inline=False)
+    embed.add_field(name="ID", value=str(role.id), inline=False)
+    await log.send(embed=embed)
+
+@bot.event
+async def on_guild_role_delete(role):
+    log = log_channel(role.guild)
+    if log is None:
+        return
+
+    embed = discord.Embed(title="🗑️ Rolle gelöscht", color=0xE74C3C)
+    embed.add_field(name="Rolle", value=role.name, inline=False)
+    embed.add_field(name="ID", value=str(role.id), inline=False)
+    await log.send(embed=embed)
+
+# ================= ANTI RAID =================
+raid_tracker = {}
+RAID_LIMIT = 5
+RAID_TIME = 10
 
 # ================= COUNTER =================
 @tasks.loop(minutes=1)
