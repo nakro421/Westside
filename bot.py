@@ -23,6 +23,14 @@ LOG_CHANNEL_ID = 1491846127325155618
 MEMBER_CHANNEL_ID = 1491850704669769728
 BOT_CHANNEL_ID = 1491850735195918377
 ROLE_CHANNEL_ID = 1491850780012187849
+
+ANKUENDIGUNG_CHANNEL_ID = 1491834776343281727
+AKTI_CHECK_CHANNEL_ID = 1491834776343281731
+
+REACTION_CHECK_CHANNEL_IDS = [
+    ANKUENDIGUNG_CHANNEL_ID,
+    AKTI_CHECK_CHANNEL_ID
+]
 # =========================================
 
 intents = discord.Intents.all()
@@ -34,6 +42,23 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 # ================= HILFSFUNKTIONEN =================
 def log_channel(guild: discord.Guild):
     return guild.get_channel(LOG_CHANNEL_ID)
+
+def format_duration(delta):
+    total_seconds = int(delta.total_seconds())
+
+    tage = total_seconds // 86400
+    stunden = (total_seconds % 86400) // 3600
+    minuten = (total_seconds % 3600) // 60
+
+    teile = []
+    if tage > 0:
+        teile.append(f"{tage} Tag{'e' if tage != 1 else ''}")
+    if stunden > 0:
+        teile.append(f"{stunden} Stunde{'n' if stunden != 1 else ''}")
+    if minuten > 0 or not teile:
+        teile.append(f"{minuten} Minute{'n' if minuten != 1 else ''}")
+
+    return ", ".join(teile)
 
 async def get_audit_entry(guild: discord.Guild, action: discord.AuditLogAction, target_id: int = None):
     try:
@@ -49,6 +74,66 @@ async def get_audit_entry(guild: discord.Guild, action: discord.AuditLogAction, 
     except Exception as e:
         print(f"❌ Audit-Log Fehler: {e}")
     return None
+
+async def get_last_leader_reacted_message(
+    guild: discord.Guild,
+    member: discord.Member,
+    limit_per_channel: int = 300
+):
+    leader_role = guild.get_role(LEADER_ROLE_ID)
+    if leader_role is None:
+        return None
+
+    leader_ids = {m.id for m in leader_role.members if not m.bot}
+    latest_message = None
+
+    for channel_id in REACTION_CHECK_CHANNEL_IDS:
+        channel = guild.get_channel(channel_id)
+        if channel is None:
+            try:
+                channel = await bot.fetch_channel(channel_id)
+            except Exception:
+                continue
+
+        if not isinstance(channel, discord.TextChannel):
+            continue
+
+        try:
+            async for message in channel.history(limit=limit_per_channel):
+                if message.author.bot:
+                    continue
+
+                if message.author.id not in leader_ids:
+                    continue
+
+                if not message.reactions:
+                    continue
+
+                member_has_reacted = False
+
+                for reaction in message.reactions:
+                    async for user in reaction.users():
+                        if user.id == member.id:
+                            member_has_reacted = True
+                            break
+                    if member_has_reacted:
+                        break
+
+                if member_has_reacted:
+                    if latest_message is None or message.created_at > latest_message.created_at:
+                        latest_message = message
+
+        except discord.Forbidden:
+            print(f"❌ Keine Rechte für Kanal: {getattr(channel, 'name', channel_id)}")
+            continue
+        except discord.HTTPException as e:
+            print(f"❌ HTTP-Fehler in Kanal {getattr(channel, 'name', channel_id)}: {e}")
+            continue
+        except Exception as e:
+            print(f"❌ Fehler in {getattr(channel, 'name', channel_id)}: {e}")
+            continue
+
+    return latest_message
 
 # ================= EVENTS =================
 @bot.event
@@ -82,7 +167,7 @@ async def on_app_command_error(interaction: discord.Interaction, error):
                 f"⏳ Bitte warte {round(error.retry_after, 1)} Sekunden.",
                 ephemeral=True
             )
-        except:
+        except Exception:
             return
 
     elif isinstance(error, app_commands.errors.MissingPermissions):
@@ -91,7 +176,7 @@ async def on_app_command_error(interaction: discord.Interaction, error):
                 "❌ Du hast keine Rechte dafür.",
                 ephemeral=True
             )
-        except:
+        except Exception:
             return
 
     print(f"❌ Fehler bei {interaction.command.name if interaction.command else 'Unbekannt'}: {error}")
@@ -100,11 +185,15 @@ async def on_app_command_error(interaction: discord.Interaction, error):
         log = log_channel(interaction.guild)
         if log:
             embed = discord.Embed(title="⚠️ Command Fehler", color=0xE74C3C)
-            embed.add_field(name="Command", value=interaction.command.name if interaction.command else "Unbekannt", inline=False)
+            embed.add_field(
+                name="Command",
+                value=interaction.command.name if interaction.command else "Unbekannt",
+                inline=False
+            )
             embed.add_field(name="User", value=interaction.user.mention, inline=False)
             embed.add_field(name="Fehler", value=str(error), inline=False)
             await log.send(embed=embed)
-    except:
+    except Exception:
         pass
 
     try:
@@ -118,7 +207,7 @@ async def on_app_command_error(interaction: discord.Interaction, error):
                 "❌ Es ist ein Fehler aufgetreten (wurde geloggt).",
                 ephemeral=True
             )
-    except:
+    except Exception:
         pass
 
 # ================= PING VIEW =================
@@ -138,7 +227,7 @@ class PingView(View):
         liste = "\n".join(f"• {m.mention}" for m in self.members)
         embed = discord.Embed(
             title="❌ Keine Reaktion",
-            description=liste,
+            description=liste[:4096],
             color=0xE74C3C
         )
         await interaction.channel.send(embed=embed)
@@ -150,24 +239,68 @@ async def reaktionen(interaction: discord.Interaction, channel: discord.TextChan
     if LEADER_ROLE_ID not in [r.id for r in interaction.user.roles]:
         return await interaction.response.send_message("❌ Keine Leader-Rechte.", ephemeral=True)
 
+    await interaction.response.defer(ephemeral=True)
+
     try:
         message = await channel.fetch_message(int(nachrichten_id))
     except Exception as e:
-        return await interaction.response.send_message(f"❌ Nachricht nicht gefunden: {e}", ephemeral=True)
+        return await interaction.followup.send(f"❌ Nachricht nicht gefunden: {e}", ephemeral=True)
 
-    reacted = set()
-    for r in message.reactions:
-        async for u in r.users():
-            reacted.add(u)
+    reacted_ids = set()
+    for reaction in message.reactions:
+        async for user in reaction.users():
+            reacted_ids.add(user.id)
 
     role = interaction.guild.get_role(BALLAS_ROLE_ID)
     if role is None:
-        return await interaction.response.send_message("❌ BALLAS-Rolle nicht gefunden.", ephemeral=True)
+        return await interaction.followup.send("❌ BALLAS-Rolle nicht gefunden.", ephemeral=True)
 
-    not_reacted = [m for m in role.members if not m.bot and m not in reacted]
+    not_reacted = [m for m in role.members if not m.bot and m.id not in reacted_ids]
+    now = datetime.now(UTC)
 
-    await interaction.response.send_message(
-        f"✅ Auswertung abgeschlossen. Nicht reagiert: {len(not_reacted)}",
+    if not not_reacted:
+        embed = discord.Embed(
+            title="✅ Reaktionsauswertung abgeschlossen",
+            description="Alle Mitglieder haben auf diese Nachricht reagiert.",
+            color=0x2ECC71
+        )
+        embed.add_field(name="Nachricht", value=f"[Zur Nachricht springen]({message.jump_url})", inline=False)
+
+        await interaction.followup.send(
+            embed=embed,
+            ephemeral=True,
+            view=PingView(not_reacted)
+        )
+        return
+
+    lines = []
+    for member in not_reacted:
+        last_msg = await get_last_leader_reacted_message(interaction.guild, member)
+
+        if last_msg is None:
+            status = "❌ noch nie auf Leader-Nachricht in #ankündigung oder #akti-check reagiert"
+        else:
+            delta = now - last_msg.created_at
+            status = f"🕒 zuletzt reagiert vor {format_duration(delta)} in {last_msg.channel.mention}"
+
+        line = f"• {member.mention} — {status}"
+
+        if len("\n".join(lines + [line])) > 3800:
+            lines.append("• ... weitere Mitglieder konnten wegen Discord-Limit nicht angezeigt werden")
+            break
+
+        lines.append(line)
+
+    embed = discord.Embed(
+        title="📊 Reaktionsauswertung",
+        description="\n".join(lines),
+        color=0xE67E22
+    )
+    embed.add_field(name="Nachricht", value=f"[Zur Nachricht springen]({message.jump_url})", inline=False)
+    embed.add_field(name="Nicht reagiert", value=str(len(not_reacted)), inline=False)
+
+    await interaction.followup.send(
+        embed=embed,
         ephemeral=True,
         view=PingView(not_reacted)
     )
@@ -203,8 +336,13 @@ async def clear(interaction: discord.Interaction, anzahl: int):
     if anzahl <= 0:
         return await interaction.response.send_message("❌ Bitte gib eine Zahl größer als 0 an.", ephemeral=True)
 
-    deleted = await interaction.channel.purge(limit=anzahl)
-    await interaction.response.send_message(f"✅ {len(deleted)} Nachrichten gelöscht.", ephemeral=True)
+    await interaction.response.defer(ephemeral=True)
+
+    try:
+        deleted = await interaction.channel.purge(limit=anzahl)
+        await interaction.followup.send(f"✅ {len(deleted)} Nachrichten gelöscht.", ephemeral=True)
+    except Exception as e:
+        await interaction.followup.send(f"❌ Fehler beim Löschen: {e}", ephemeral=True)
 
 # ================= LOGGING =================
 @bot.event
@@ -226,7 +364,7 @@ async def on_message_delete(message):
         )
         if entry:
             deleter = entry.user.mention
-    except:
+    except Exception:
         pass
 
     embed = discord.Embed(title="🗑️ Nachricht gelöscht", color=0xE74C3C)
