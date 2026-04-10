@@ -75,17 +75,16 @@ async def get_audit_entry(guild: discord.Guild, action: discord.AuditLogAction, 
         print(f"❌ Audit-Log Fehler: {e}")
     return None
 
-async def get_last_leader_reacted_message(
+async def build_last_leader_reaction_map(
     guild: discord.Guild,
-    member: discord.Member,
-    limit_per_channel: int = 300
+    limit_per_channel: int = 100
 ):
     leader_role = guild.get_role(LEADER_ROLE_ID)
     if leader_role is None:
-        return None
+        return {}
 
     leader_ids = {m.id for m in leader_role.members if not m.bot}
-    latest_message = None
+    latest_by_user = {}
 
     for channel_id in REACTION_CHECK_CHANNEL_IDS:
         channel = guild.get_channel(channel_id)
@@ -109,19 +108,17 @@ async def get_last_leader_reacted_message(
                 if not message.reactions:
                     continue
 
-                member_has_reacted = False
+                reacted_user_ids = set()
 
                 for reaction in message.reactions:
                     async for user in reaction.users():
-                        if user.id == member.id:
-                            member_has_reacted = True
-                            break
-                    if member_has_reacted:
-                        break
+                        if not user.bot:
+                            reacted_user_ids.add(user.id)
 
-                if member_has_reacted:
-                    if latest_message is None or message.created_at > latest_message.created_at:
-                        latest_message = message
+                for user_id in reacted_user_ids:
+                    old_msg = latest_by_user.get(user_id)
+                    if old_msg is None or message.created_at > old_msg.created_at:
+                        latest_by_user[user_id] = message
 
         except discord.Forbidden:
             print(f"❌ Keine Rechte für Kanal: {getattr(channel, 'name', channel_id)}")
@@ -133,7 +130,7 @@ async def get_last_leader_reacted_message(
             print(f"❌ Fehler in {getattr(channel, 'name', channel_id)}: {e}")
             continue
 
-    return latest_message
+    return latest_by_user
 
 # ================= EVENTS =================
 @bot.event
@@ -273,9 +270,11 @@ async def reaktionen(interaction: discord.Interaction, channel: discord.TextChan
         )
         return
 
+    last_reaction_map = await build_last_leader_reaction_map(interaction.guild, limit_per_channel=100)
+
     lines = []
     for member in not_reacted:
-        last_msg = await get_last_leader_reacted_message(interaction.guild, member)
+        last_msg = last_reaction_map.get(member.id)
 
         if last_msg is None:
             status = "❌ noch nie auf Leader-Nachricht in #ankündigung oder #akti-check reagiert"
